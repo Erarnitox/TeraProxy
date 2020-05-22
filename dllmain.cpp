@@ -1,4 +1,3 @@
-// dllmain.cpp : Definiert den Einstiegspunkt für die DLL-Anwendung.
 #include "pch.h"
 #include <windows.h>
 #include <iostream>
@@ -11,7 +10,7 @@
 #define MYMENU_EXIT (WM_APP + 100)
 #define SEND_BUTTON (WM_APP + 101)
 #define LOG_SEND (WM_APP + 102)
-#define LOG_RECV (WM_APP + 103)
+//#define LOG_RECV (WM_APP + 103)
 #define CLEAR_BUTTON (WM_APP + 104)
 
 HMODULE inj_hModule;
@@ -123,7 +122,7 @@ LRESULT CALLBACK MessageHandler(HWND hWindow, UINT uMessage, WPARAM wParam, LPAR
                 logSentHook = true;
             }
             break;
-
+/*
         case LOG_RECV:
             LogRecv = IsDlgButtonChecked(hWindow, LOG_RECV);
 #ifdef _DEBUG
@@ -131,11 +130,14 @@ LRESULT CALLBACK MessageHandler(HWND hWindow, UINT uMessage, WPARAM wParam, LPAR
 #endif
             if (LogRecv == BST_CHECKED) {
                 CheckDlgButton(hWindow, LOG_RECV, BST_UNCHECKED);
+                logRecvHook = false;
             }
             else {
                 CheckDlgButton(hWindow, LOG_RECV, BST_CHECKED);
+                logRecvHook = true;
             }
             break;
+*/
         case CLEAR_BUTTON:
             logText.erase(logText.begin(), logText.end());
             SetWindowTextA(hLog, "Cleared! :)\r\nFind Tutorials on Guidedhacking.com!");
@@ -164,9 +166,8 @@ BOOL RegisterDLLWindowClass(const wchar_t szClassName[]) {
     return 1;
 }
 
-void printSendBufferToLog() {
+inline void printSendBufferToLog() {
     char sendID[] = "[SEND] ";
-    char tmp = '0';
 #ifdef _DEBUG
     std::cout << "Sent Packet len: " << std::dec << sentLen << std::endl;
 #endif
@@ -193,6 +194,36 @@ void printSendBufferToLog() {
     SetWindowTextA(hLog, &logText[0]);
 }
 
+/*
+//Might have to use Semapores if Recv and Send run in different threads
+inline void printRecvBufferToLog() {
+    char recvID[] = "[RECV] ";
+#ifdef _DEBUG
+    std::cout << "Recieved Packet len: " << std::dec << recvLen << std::endl;
+#endif
+    while (logText.size() > 4096) {
+        logText.erase(logText.begin(), logText.begin() + 400);
+    }
+    if (logText.size() > 1) {
+        logText.pop_back();
+        logText.push_back('\r');
+        logText.push_back('\n');
+    }
+
+    for (DWORD i = 0; i < recvLen + 7; ++i) {
+        if (i < 7) {
+            logText.push_back(recvID[i]);
+        }
+        else {
+            logText.push_back(hex_chars[((recvBuffer)[i - 7] & 0xF0) >> 4]);
+            logText.push_back(hex_chars[((recvBuffer)[i - 7] & 0x0F) >> 0]);
+            logText.push_back(' ');
+        }
+    }
+    logText.push_back('\0');
+    SetWindowTextA(hLog, &logText[0]);
+}*/
+
 DWORD WINAPI WindowThread(HMODULE hModule){
 
 #ifdef _DEBUG
@@ -207,6 +238,7 @@ DWORD WINAPI WindowThread(HMODULE hModule){
 
     moduleBase = (uintptr_t)GetModuleHandle(moduleName);
     Send = (InternalSend)(ScanInternal(internalSendPattern, internalSendMask, (char*)(moduleBase+ 0x0500000), 0x3000000));
+    //void* toHookRecv = (void*)(moduleBase+0x10097D6);//(ScanInternal(internalRecvPattern, internalRecvMask, (char*)(moduleBase + 0x0500000), 0x3000000));
 
 #ifdef _DEBUG
     std::cout << "send function location:" << std::hex << (int)Send << std::endl;
@@ -214,12 +246,14 @@ DWORD WINAPI WindowThread(HMODULE hModule){
 
     toHookSend += (size_t)Send;
     jmpBackAddrSend = toHookSend + sendHookLen;
+    //jmpBackAddrRecv = (size_t)toHookRecv + recvHookLen;
 
 #ifdef _DEBUG
     std::cout << "[Send Jump Back Addy:] 0x" << std::hex << jmpBackAddrSend << std::endl;
 #endif
 
     Hook* sendHook = new Hook((void*)toHookSend, (void*)sendHookFunc, sendHookLen);
+    //Hook* recvHook = new Hook(toHookRecv, recvHookFunc, recvHookLen);
 
     MSG messages;
     HMENU hMenu = CreateDLLWindowMenu();
@@ -235,7 +269,7 @@ DWORD WINAPI WindowThread(HMODULE hModule){
     hCraftedPacket = CreateWindowEx(0, L"edit", L"<Packet Data>", WS_TABSTOP | WS_VISIBLE | WS_CHILD | ES_MULTILINE | WS_BORDER, 110, 730, 900, 100, hwnd, NULL, hModule, NULL);
 
     hLogSend = CreateWindowEx(0, L"button", L"Log Send", WS_CHILD | WS_VISIBLE | BS_CHECKBOX, 110, 705, 100, 25, hwnd, (HMENU)LOG_SEND, hModule, NULL);
-    hLogRecv = CreateWindowEx(0, L"button", L"Log Recv", WS_CHILD | WS_VISIBLE | BS_CHECKBOX, 210, 705, 100, 25, hwnd, (HMENU)LOG_RECV, hModule, NULL);
+    //hLogRecv = CreateWindowEx(0, L"button", L"Log Recv", WS_CHILD | WS_VISIBLE | BS_CHECKBOX, 210, 705, 100, 25, hwnd, (HMENU)LOG_RECV, hModule, NULL);
 
     ShowWindow(hwnd, SW_SHOWNORMAL);
     UpdateWindow(hwnd); // redraw window;
@@ -249,7 +283,9 @@ DWORD WINAPI WindowThread(HMODULE hModule){
     }
 
     //exit:
+    //delete recvHook;
     delete sendHook;
+    
 
 #ifdef _DEBUG
     if (f != 0) {
