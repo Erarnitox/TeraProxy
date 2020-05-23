@@ -590,6 +590,52 @@ I know it's still a lot of code to throw in at once in a tutorial but i tried to
 I have taken the comments out to not confuse you even more. That might leave some of you with questions to what some part of the code does. So if you have anything you dont understand feel free to ask about it below and i will try my best to explain it and update the thread to make it easier to understand for future readers.
 
 ## understanding the Protocol
+now that we have the capability to view and log unencrypted packets we need to understand the protocol of the game.
+I actually was lucky and found the repo of somebody who already did a lot of reversing on the games protocol.
+Repo: https://github.com/tera-proxy/tera-data/tree/master/protocol
+This isnt the exact protocol i have found to be used in the game but this was definetly a head start.
+
+But what if you are not that lucky or are even the first one to reverse that game?
+Well it is tedious work but we will go though how one would tackle this:
+First we want to record some packets we can analyze for a specific action.
+Since we are mostly interested in economy exploits to make us rich we will take a look at the packets that have to do with transactions first.
+For that purpose we will deposit gold to our bank and note down the packet that was sent as well as the amount of money we deposited.
+![deposit](deposit.gif)
+After some transactions we end up with a list like this:
+
+```
+5g 0s 0b:    40 00 A4 D8 01 00 00 00 F8 4B CF 00 79 1D 09 10 00 80 00 03 01 00 00 00 00 00 00 00 50 C3 00 00 00 00 00 00 FF FF FF FF FF FF FF FF FF FF FF FF 00 00 00 00 00 00 00 00 00 00 00 00 FF FF FF FF
+2g 7s 3b:    40 00 A4 D8 02 00 00 00 65 4F CF 00 79 1D 09 10 00 80 00 03 01 00 00 00 00 00 00 00 DF 50 00 00 00 00 00 00 FF FF FF FF FF FF FF FF FF FF FF FF 00 00 00 00 00 00 00 00 00 00 00 00 FF FF FF FF
+1g 8s 70b:   40 00 A4 D8 03 00 00 00 24 4F CF 00 79 1D 09 10 00 80 00 03 01 00 00 00 00 00 00 00 76 2A 00 00 00 00 00 00 FF FF FF FF FF FF FF FF FF FF FF FF 00 00 00 00 00 00 00 00 00 00 00 00 FF FF FF FF
+1g 3s 1b:    40 00 A4 D8 04 00 00 00 C3 4F CF 00 79 1D 09 10 00 80 00 03 01 00 00 00 00 00 00 00 3D 28 00 00 00 00 00 00 FF FF FF FF FF FF FF FF FF FF FF FF 00 00 00 00 00 00 00 00 00 00 00 00 FF FF FF FF
+0g 50s 10b:  40 00 A4 D8 05 00 00 00 28 51 CF 00 79 1D 09 10 00 80 00 03 01 00 00 00 00 00 00 00 92 13 00 00 00 00 00 00 FF FF FF FF FF FF FF FF FF FF FF FF 00 00 00 00 00 00 00 00 00 00 00 00 FF FF FF FF
+```
+if you copy this list in a proper text editor you can straight away tell some obvious patterns:
+![pattern](pattern.jpg)
+- the fith byte seems to be a sequence number that goes up by 1 for each transaction we do to or from the bank.
+- only the 3 bytes after the 9th byte and the 2 bytes after the 28th byte change
+so at least one of them is related to our transaction amount.
+
+After a high level inspection we will copy a packet in a hex editor to see different representations for the data at these 2 interesting spots of the packet.
+I use HxD for this.
+(Get HxD here: https://mh-nexus.de/en/downloads.php?product=HxD20)
+(2g 7s 3b packet:)
+![goldamnt](goldamnt.jpg)
+We have found out that the 28th byte does infact contain our gold amount.
+To find out what exact datatype it is we need to find out what the other bytes in the transaction packet do.
+After some more time reversing the packet structure i found out the packet structure looks something like this:
+```
+struct transactionPacket{
+char[4] id;
+__int16 sequence;
+__int16 page;
+...
+int64 gold;
+...
+};
+```
+to confirm we found the right spot and didnt miss any checksums or anything we craft our own transaction packet with a modified amount and send it to the server:
+![crafted](crafted.gif)
 ## Fuzzing
 Now that we can intercept the games traffic we should think about what to target.
 Since integer overflows appear to be acommon problem this is what we will tackle first.
