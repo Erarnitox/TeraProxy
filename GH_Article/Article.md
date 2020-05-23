@@ -1,4 +1,4 @@
-# MMO Hacking
+# MMO Hacking Bootcamp
 Hello and welcome to my first real guide or tutorial on this Forum.
 Since i got inspired by this talk: https://youtu.be/QOfroRgBgo0
 recently i decided to give that a try myself.
@@ -107,14 +107,487 @@ It appears that tera uses a wrapper around the send() function thats just there 
 However this procedure is different for every game and it's important that you understand basic revrsing and debugging for you find your send function successfully.
 There can be a lot of places that write to the buffer and you might have to do multiple hooks.
 However if there is a unified send function in the game it has to write to the buffer at least once for every action you take. So you can ignore the opcodes that only write to the buffer for certain actions most times.
-It's still a good idea to note down the addresses of these opcodes as well so you can still chekc them out later.
+It's still a good idea to note down the addresses of these opcodes as well so you can still check them out later.
 
 (I greatly enjoyed the workshop at begin.re it mostly covers static analysis. But im sure if you struggle to understand what the game is doing this workshop will help you to get to the next level :))
 
+After you have spent some time reversing the game and tracing functions back you will most likely have found the internal send function (or given up).
+Here is the one i found for Tera:
+![internalsend](internalsend.jpg)
+As we can see on the stack this function takes a pointer to the buffer and it's length as argument.
+This will be helpful to know later.
 ### Hooking the send function
-### Calling the send function
-### writing the Packet Editor DLL
+we now have some options we could modify the packet with the hook itself or just log it and call the send function ourself later.
+Since i aimed at a packet editor like the one Mafred uses i decided to go with the 2nd option.
+So we just need to acess the packet buffer and it's length through our hook so we can log the packet.
+i wont cover how to do hooking since this was covered here: https://guidedhacking.com/threads/code-detouring-hooking-guide.14185/
+but i will explain what i do in my hook.
+First lets have a quick look:
+```
+    void* teax;
+    void* tebx;
+    void* tecx;
+    void* tedx;
+    void* tesi;
+    void* tedi;
+    void* tebp;
+    void* tesp;
 
+    DWORD sentLen;
+    char* sentBuffer;
+
+    void __declspec(naked) sendHookFunc() {
+    __asm {
+        mov teax, eax; backup
+        mov tebx, ebx
+        mov tecx, ecx
+        mov tedx, edx
+        mov tesi, esi
+        mov tedi, edi
+        mov tebp, ebp
+        mov tesp, esp
+        mov eax, [esp + 0x8]
+        mov sentBuffer, eax
+        mov eax, [esp + 0xC]
+        mov sentLen, eax
+    }
+    printSendBufferToLog();
+    __asm{
+        mov eax, teax
+        mov ebx, tebx
+        mov ecx, tecx
+        mov edx, tedx
+        mov esi, tesi
+        mov edi, tedi
+        mov ebp, tebp
+        mov esp, tesp; end of restore
+        mov ebp, esp
+        push ebx
+        mov ebx, ecx
+        jmp[jmpBackAddrSend]
+    }
+}
+
+```
+
+first we have some backup variables to back up the registers.
+You could just push them to the stack and pop them back later but it's safer to do it this way since we have no direct control over what the compiler pushes to the stack etc.
+So i decided to just store the values of the registers in variables.
+It's important to do that if we are panning to call c++ function from within our hook since they will most likely change the registers and we dont want them to have changed at the end of our hook since that can influence the following code gets executed. Thats why we restore them just before we execute the opcodes that we overwrote with our hook.
+esp is the stack pointer through that pointer we can access values that go pushed to the stack.
+That means esp -> first element on the stack, esp +0x4 -> 2nd element, esp + 0x08 -> 3rd ...
+
+### Calling the send function
+To call any function we need to follow the calling convetion the function likes to be called by.
+(More on calling convetions: https://docs.microsoft.com/en-us/cpp/cpp/argument-passing-and-naming-conventions?view=vs-2019)
+However we can make it easy for ourselfs and dont worry too much about this since most games use the `__thiscall`
+calling convetion for the send function since this convetion is used for any function that is part of a class.
+(So this calling convetion is used for every method!).
+To call a function like this we first need to get the pointer to the class it belongs to.
+![thiscall](thiscall.jpg)
+As we can see we can get the this pointer from the ECX register.
+The easiest way to get ourself a copy of that pointer is just to add this to our hook:
+```
+void* thisPTR;
+
+//this goes inside our asm block:
+mov thisPTR, ecx
+
+```
+
+Since we already figured out the arguments the function takes we can now define the type of the function.
+And since we already know the location of the function we can initialize a variable of that type with that location:
+```
+typedef void (__thiscall* InternalSend)(void* thisClass, const char* data, DWORD length);
+InternalSend Send = (InternalSend)0x1445270;
+```
+(more on function pointers: https://www.learncpp.com/cpp-tutorial/78-function-pointers/)
+
+After that we can use this Send function like any other function in our code and sould be able to send packets to the server ourselves.
+
+with the finished packet editor this looks like this:
+![replay](replay.gif)
+
+### writing the Packet Editor DLL
+Now we finally have enough information to write the packet editor.
+We for now only have the static address of the send function but MMOs tend to patch regularely.
+That means this way we might have to find the send sunction every patch.
+To avoid that problem i decided to use pattern scanning to find the send function.
+For that i have used Rakes tutorial and code.
+(Pattern Scan Tutorial: https://guidedhacking.com/threads/external-internal-pattern-scanning-guide.14112/)
+
+#### Scan.h
+```
+#pragma once
+//Tanks to rake for this code here and Nomade for making it more stable
+char* ScanBasic(const char* pattern, const char* mask, char* begin, size_t size){
+    size_t patternLen = strlen(mask);
+    for (size_t i = 0; i < size; i++){
+        bool found = true;
+        for (size_t j = 0; j < patternLen; j++){
+            if (mask[j] != '?' && pattern[j] != *(char*)((intptr_t)begin + i + j)){
+                found = false;
+                break;
+            }
+        }
+        if (found){
+            return (begin + i);
+        }
+    }
+    return nullptr;
+}
+
+char* ScanInternal(const char* pattern, const char* mask, char* begin, size_t size){
+    char* match{ nullptr };
+    MEMORY_BASIC_INFORMATION mbi{};
+
+    for (char* curr = begin; curr < begin + size; curr += mbi.RegionSize){
+        if (!VirtualQuery(curr, &mbi, sizeof(mbi)) || mbi.State != MEM_COMMIT || mbi.Protect == PAGE_NOACCESS) continue;
+        match = ScanBasic(pattern, mask, curr, mbi.RegionSize);
+
+        if (match != nullptr && match != pattern){
+            break;
+        }
+    }
+    return match;
+}
+
+```
+
+For the hooking i wrote a simple class that cleans up after itself so we can load and unload the dll without crashing the game.
+
+#### Hook.h
+```
+#pragma once
+class Hook {
+    void* tToHook;
+    char* oldOpcodes;
+    int tLen;
+public:
+    Hook(void* toHook, void* ourFunct, int len) : tToHook(toHook), oldOpcodes(nullptr), tLen(len){
+        if (len < 5) {
+            return;
+        }
+
+        DWORD curProtection;
+        VirtualProtect(toHook, len, PAGE_EXECUTE_READWRITE, &curProtection);
+
+        oldOpcodes = (char*)malloc(len);
+        if (oldOpcodes != nullptr) {
+            for (int i = 0; i < len; ++i) {
+                oldOpcodes[i] = ((char*)toHook)[i];
+            }
+        }
+
+        memset(toHook, 0x90, len);
+
+        DWORD relativeAddress = ((DWORD)ourFunct - (DWORD)toHook) - 5;
+
+        *(BYTE*)toHook = 0xE9;
+        *(DWORD*)((DWORD)toHook + 1) = relativeAddress;
+
+        VirtualProtect(toHook, len, curProtection, &curProtection);
+    }
+
+    ~Hook() {
+        if (oldOpcodes != nullptr) {
+            DWORD curProtection;
+            VirtualProtect(tToHook, tLen, PAGE_EXECUTE_READWRITE, &curProtection);
+            for (int i = 0; i < tLen; ++i) {
+                ((char*)tToHook)[i] = oldOpcodes[i];
+            }
+            VirtualProtect(tToHook, tLen, curProtection, &curProtection);
+            free(oldOpcodes);
+        }
+    }
+};
+```
+
+Everything game specific i have handeled in another header file.
+It especially takes care of holding pointers to the send function and holds the code we execute in our hook:
+
+#### Tera.h
+```
+#pragma once
+typedef void (__thiscall* InternalSend)(void* thisClass, const char* data, DWORD length);
+InternalSend Send;
+void* thisPTR;
+wchar_t moduleName[] = L"TERA.exe";
+size_t toHookSend = 1;
+int sendHookLen = 5;
+DWORD sentLen;
+char* sentBuffer;
+char* tmpBuffer;
+
+const char* internalSendPattern = "\x55\x8B\xEC\x53\x8B\xD9\x83\x7B\x0C\x00\x74\x54\x8B\x8B\x1C\x00\x02\x00\x85\xC9\x74\x2E\x8B\x01\x8B\x01\x8B\x40\x18\xFF\xD0";
+const char* internalSendMask = "xxxxxxxxxx??xx????xxxxxxx";
+
+bool logSentHook = false;
+
+void* teax;
+void* tebx;
+void* tecx;
+void* tedx;
+void* tesi;
+void* tedi;
+void* tebp;
+void* tesp;
+
+void printSendBufferToLog();
+
+DWORD jmpBackAddrSend;
+void __declspec(naked) sendHookFunc() {
+    __asm {
+        mov thisPTR, ecx
+        mov teax, eax; backup
+        mov tebx, ebx
+        mov tecx, ecx
+        mov tedx, edx
+        mov tesi, esi
+        mov tedi, edi
+        mov tebp, ebp
+        mov tesp, esp
+        mov eax, [esp + 0x8]
+        mov sentBuffer, eax
+        mov eax, [esp + 0xC]
+        mov sentLen, eax
+    }
+    if (logSentHook) {
+        printSendBufferToLog();
+    }
+    __asm{
+        mov eax, teax
+        mov ebx, tebx
+        mov ecx, tecx
+        mov edx, tedx
+        mov esi, tesi
+        mov edi, tedi
+        mov ebp, tebp
+        mov esp, tesp; end of restore
+        mov ebp, esp
+        push ebx
+        mov ebx, ecx
+        jmp[jmpBackAddrSend]
+    }
+}
+
+```
+
+And lastly we have have the main dll. This file holds the entry point to our dll, spins up the GUI of our packet editor (using the WinApi) and so on. This file holds the main logic for our editor.
+
+#### dllmain.cpp
+```
+#include "pch.h"
+#include <windows.h>
+#include <iostream>
+#include <iomanip>
+#include "Tera.h"
+#include "Hook.h"
+#include "Scan.h"
+#include <vector>
+
+#define MYMENU_EXIT (WM_APP + 100)
+#define SEND_BUTTON (WM_APP + 101)
+#define LOG_SEND (WM_APP + 102)
+#define CLEAR_BUTTON (WM_APP + 104)
+
+HMODULE inj_hModule;
+HWND hCraftedPacket;
+HWND hLog;
+
+BOOL LogSend = 0;
+BOOL LogRecv = 0;
+
+HWND hLogSend;
+HWND hLogRecv;
+
+wchar_t craftedBuffer[533];
+char bufferToSend[533];
+char const hex_chars[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+
+uintptr_t moduleBase;
+std::vector<char> logText;
+
+HMENU CreateDLLWindowMenu(){
+    HMENU hMenu;
+    hMenu = CreateMenu();
+    HMENU hMenuPopup;
+    if (hMenu == NULL)
+        return FALSE;
+    hMenuPopup = CreatePopupMenu();
+    AppendMenuW(hMenuPopup, MF_STRING, MYMENU_EXIT, TEXT("Exit"));
+    AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hMenuPopup, TEXT("File"));
+    return hMenu;
+}
+
+LRESULT CALLBACK MessageHandler(HWND hWindow, UINT uMessage, WPARAM wParam, LPARAM lParam) {
+    switch (uMessage) {
+    case WM_CLOSE:
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        return 0;
+        break;
+    case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+        case MYMENU_EXIT:
+            PostQuitMessage(0);
+            return 0;
+            break;
+        case SEND_BUTTON:
+            GetWindowText(hCraftedPacket, craftedBuffer, 533);
+            size_t len;
+            wcstombs_s(&len, bufferToSend, 533, craftedBuffer, 533);
+            size_t i;
+            i = 0;
+            for (size_t count = 0; count < len; ++i, count += 3) {
+                if (bufferToSend[count] >= 'A') {
+                    bufferToSend[count] -= 'A';
+                    bufferToSend[count] += 10;
+                }
+                else {
+                    bufferToSend[count] -= 48;
+                }
+
+                if (bufferToSend[count+1] >= 'A') {
+                    bufferToSend[count+1] -= 'A';
+                    bufferToSend[count+1] += 10;
+                }
+                else {
+                    bufferToSend[count+1] -= 48;
+                }
+
+                bufferToSend[i] = (__int8)(((char)bufferToSend[count]) * (char)16);
+                bufferToSend[i] += (__int8)bufferToSend[count + 1];
+            }
+            bufferToSend[i] = '\0';
+            if (thisPTR != 0) {
+                Send(thisPTR, bufferToSend, i);
+            }
+            break;
+        case LOG_SEND:
+            LogSend = IsDlgButtonChecked(hWindow, LOG_SEND);
+            
+            if (LogSend == BST_CHECKED) {
+                CheckDlgButton(hWindow, LOG_SEND, BST_UNCHECKED);
+                logSentHook = false;
+            }
+            else {
+                CheckDlgButton(hWindow, LOG_SEND, BST_CHECKED);
+                logSentHook = true;
+            }
+            break;
+        case CLEAR_BUTTON:
+            logText.erase(logText.begin(), logText.end());
+            SetWindowTextA(hLog, "Cleared! :)\r\nFind Tutorials on Guidedhacking.com!");
+        }
+    }
+    return DefWindowProc(hWindow, uMessage, wParam, lParam);
+}
+
+//Register our windows Class
+BOOL RegisterDLLWindowClass(const wchar_t szClassName[]) {
+    WNDCLASSEX wc;
+    wc.hInstance = inj_hModule;
+    wc.lpszClassName = (LPCWSTR)szClassName;
+    wc.lpfnWndProc = MessageHandler;
+    wc.style = CS_VREDRAW | CS_HREDRAW;
+    wc.cbSize = sizeof(WNDCLASSEX);
+    wc.hIcon = LoadIcon(NULL, IDI_SHIELD);
+    wc.hIconSm = LoadIcon(NULL, IDI_SHIELD);
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wc.lpszMenuName = NULL;
+    wc.cbClsExtra = 0;
+    wc.cbWndExtra = 0;
+    wc.hbrBackground = GetSysColorBrush(COLOR_BTNFACE);
+    if (!RegisterClassEx(&wc))
+        return 0;
+    return 1;
+}
+
+inline void printSendBufferToLog() {
+    char sendID[] = "[SEND] ";
+
+    while (logText.size() > 4096) {
+        logText.erase(logText.begin(), logText.begin() + 400);
+    }
+    if (logText.size() > 1) {
+        logText.pop_back();
+        logText.push_back('\r');
+        logText.push_back('\n');
+    }
+    
+    for (DWORD i = 0; i < sentLen + 7; ++i) {
+        if (i < 7) {
+            logText.push_back(sendID[i]);
+        }
+        else {
+            logText.push_back(hex_chars[((sentBuffer)[i - 7] & 0xF0) >> 4]);
+            logText.push_back(hex_chars[((sentBuffer)[i - 7] & 0x0F) >> 0]);
+            logText.push_back(' ');
+        }
+    }
+    logText.push_back('\0');
+    SetWindowTextA(hLog, &logText[0]);
+}
+
+DWORD WINAPI WindowThread(HMODULE hModule){
+    logText = std::vector<char>();
+    moduleBase = (uintptr_t)GetModuleHandle(moduleName);
+    Send = (InternalSend)(ScanInternal(internalSendPattern, internalSendMask, (char*)(moduleBase+ 0x0500000), 0x3000000));
+    toHookSend += (size_t)Send;
+    jmpBackAddrSend = toHookSend + sendHookLen;
+
+    Hook* sendHook = new Hook((void*)toHookSend, (void*)sendHookFunc, sendHookLen);
+   
+    MSG messages;
+    HMENU hMenu = CreateDLLWindowMenu();
+    HWND hSendButton;
+    HWND hClearButton;
+    
+    RegisterDLLWindowClass(L"InjectedDLLWindowClass");
+    HWND hwnd = CreateWindowEx(0, L"InjectedDLLWindowClass", L"Erarnitox's Tera Proxy | GuidedHacking.com", WS_EX_LAYERED, CW_USEDEFAULT, CW_USEDEFAULT, 1020, 885, NULL, hMenu, inj_hModule, NULL);
+    hLog = CreateWindowEx(0, L"edit", L"Tera Proxy made by Erarnitox\r\n!!! visit GuidedHacking.com !!!", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | WS_BORDER | ES_READONLY, 5, 5, 1005, 700, hwnd, NULL, hModule, NULL);
+
+    hClearButton = CreateWindowEx(0, L"button", L"Clear Log", WS_TABSTOP | WS_CHILD | WS_VISIBLE | WS_BORDER | BS_DEFPUSHBUTTON, 5, 710, 100, 30, hwnd, (HMENU)CLEAR_BUTTON, hModule, NULL);
+    hSendButton = CreateWindowEx(0, L"button", L"Send", WS_TABSTOP | WS_CHILD | WS_VISIBLE | WS_BORDER | BS_DEFPUSHBUTTON, 5, 800, 100, 30, hwnd, (HMENU)SEND_BUTTON, hModule, NULL);
+    hCraftedPacket = CreateWindowEx(0, L"edit", L"<Packet Data>", WS_TABSTOP | WS_VISIBLE | WS_CHILD | ES_MULTILINE | WS_BORDER, 110, 730, 900, 100, hwnd, NULL, hModule, NULL);
+
+    hLogSend = CreateWindowEx(0, L"button", L"Log Send", WS_CHILD | WS_VISIBLE | BS_CHECKBOX, 110, 705, 100, 25, hwnd, (HMENU)LOG_SEND, hModule, NULL);
+
+    ShowWindow(hwnd, SW_SHOWNORMAL);
+   
+    while (GetMessage(&messages, NULL, 0, 0)){
+        if (GetAsyncKeyState(VK_END) & 1) {
+            break;
+        }
+        TranslateMessage(&messages);
+        DispatchMessage(&messages);
+    }
+
+    //exit:
+    delete sendHook;
+    FreeLibraryAndExitThread(hModule, 0);
+    return 0;
+}
+
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved){
+    switch (ul_reason_for_call){
+        case DLL_PROCESS_ATTACH:
+            inj_hModule = hModule; 
+            HANDLE ThreadHandle = CreateThread(0, NULL, (LPTHREAD_START_ROUTINE)WindowThread, hModule, NULL, NULL);
+            
+            if (ThreadHandle != NULL) {
+                CloseHandle(ThreadHandle);
+            }
+        break;
+    }
+    return TRUE;
+}
+
+```
+I didnt write comments even tho i planed to do so.
+I know it's still a lot of code to throw in at once in a tutorial but i tried to keep it as simple as possible for me.
+I have taken the comments out to not confuse you even more. That might leave some of you with questions to what some part of the code does. So if you have anything you dont understand feel free to ask about it below and i will try my best to explain it and update the thread to make it easier to understand for future readers.
 
 ## understanding the Protocol
 ## Fuzzing

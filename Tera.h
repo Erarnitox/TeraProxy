@@ -44,7 +44,7 @@ void* resp;
 */
 
 void printSendBufferToLog();
-void printRecvBufferToLog();
+//void printRecvBufferToLog();
 
 DWORD jmpBackAddrSend;
 void __declspec(naked) sendHookFunc() {
