@@ -672,6 +672,10 @@ For this most important part of the process it's really necessary to be patient 
 It can take weeks or even longer to find flaws and be able to exploit them.
 But according to some talks i have heared there is pretty much always at least one exploit in any mmo that can be found using this or similar techniques.
 
+You can also extend the packet editor with specific tools for your game so it's easier for you to find exploits.
+
+I didn't find anything interesting in Tera yet. But i this is also my first day of actively searching so im still optimistic.
+
 This wraps it up for this guide but here are some links you might find useful if you are interested in that topic:
 Manfred Defcon Talk: https://youtu.be/QOfroRgBgo0
 Manfred Workflow: https://youtu.be/iYTCBPUn98c
