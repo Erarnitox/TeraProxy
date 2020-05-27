@@ -6,22 +6,35 @@
 #include "Hook.h"
 #include "Scan.h"
 #include <vector>
+#include <string>
 
 #define MYMENU_EXIT (WM_APP + 100)
 #define SEND_BUTTON (WM_APP + 101)
 #define LOG_SEND (WM_APP + 102)
+#define LOG_FILTER (WM_APP + 105)
 //#define LOG_RECV (WM_APP + 103)
 #define CLEAR_BUTTON (WM_APP + 104)
+
+#define SEND_SEQ (WM_APP + 106)
+#define SEND_LOOP (WM_APP + 107)
+#define STOP_LOOP (WM_APP + 108)
+#define LOAD_SEQ (WM_APP + 109)
+#define EXP_SEQ (WM_APP + 110)
+
+#define INC_FNT (WM_APP + 111)
+#define DEC_FNT (WM_APP + 112)
 
 HMODULE inj_hModule;
 HWND hCraftedPacket;
 HWND hLog;
 
-BOOL LogSend = 0;
-BOOL LogRecv = 0;
+BOOL LogSend = FALSE;
+BOOL LogRecv = FALSE;
+BOOL FilterLog = FALSE;
 
 HWND hLogSend;
 HWND hLogRecv;
+HWND hFilterLog;
 
 wchar_t craftedBuffer[533];
 char bufferToSend[533];
@@ -29,18 +42,35 @@ char appedToLog[533];
 char const hex_chars[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
 uintptr_t moduleBase;
-std::vector<char> logText;
 
 HMENU CreateDLLWindowMenu(){
     HMENU hMenu;
     hMenu = CreateMenu();
-    HMENU hMenuPopup;
+    HMENU hFileMenuPopup;
+    HMENU hToolMenuPopup;
+    HMENU hFontMenuPopup;
+
     if (hMenu == NULL)
         return FALSE;
-    hMenuPopup = CreatePopupMenu();
-    AppendMenuW(hMenuPopup, MF_STRING, MYMENU_EXIT, TEXT("Exit"));
-    //AppendMenuW(hMenuPopup, MF_STRING, NULL, TEXT("Export Log"));
-    AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hMenuPopup, TEXT("File"));
+    hFileMenuPopup = CreatePopupMenu();
+    hToolMenuPopup = CreatePopupMenu();
+    hFontMenuPopup = CreatePopupMenu();
+
+    AppendMenuW(hFileMenuPopup, MF_STRING, MYMENU_EXIT, TEXT("Exit"));
+    AppendMenuW(hFileMenuPopup, MF_STRING, LOAD_SEQ, TEXT("Load Sequenz"));
+    AppendMenuW(hFileMenuPopup, MF_STRING, NULL, TEXT("Export Log as Sequenz"));
+
+    AppendMenuW(hToolMenuPopup, MF_STRING, CLEAR_BUTTON, TEXT("Clear"));
+    AppendMenuW(hToolMenuPopup, MF_STRING, SEND_SEQ, TEXT("Send Sequenz"));
+    AppendMenuW(hToolMenuPopup, MF_STRING, SEND_LOOP, TEXT("Start Sequenz Loop"));
+    AppendMenuW(hToolMenuPopup, MF_STRING, STOP_LOOP, TEXT("Stop Sequenz Loop"));
+
+    AppendMenuW(hFontMenuPopup, MF_STRING, INC_FNT, TEXT("Increase Font Size"));
+    AppendMenuW(hFontMenuPopup, MF_STRING, DEC_FNT, TEXT("Decrease Font Size"));
+
+    AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hFileMenuPopup, TEXT("File"));
+    AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hToolMenuPopup, TEXT("Tools"));
+    AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hFontMenuPopup, TEXT("Font"));
 
     return hMenu;
 }
@@ -74,6 +104,15 @@ LRESULT CALLBACK MessageHandler(HWND hWindow, UINT uMessage, WPARAM wParam, LPAR
             size_t i;
             i = 0;
             for (size_t count = 0; count < len; ++i, count += 3) {
+
+                if (bufferToSend[count] >= 'a') {
+                    bufferToSend[count] -= 0x20;
+                }
+
+                if (bufferToSend[count+1] >= 'a') {
+                    bufferToSend[count+1] -= 0x20;
+                }
+               
                 if (bufferToSend[count] >= 'A') {
                     bufferToSend[count] -= 'A';
                     bufferToSend[count] += 10;
@@ -139,8 +178,7 @@ LRESULT CALLBACK MessageHandler(HWND hWindow, UINT uMessage, WPARAM wParam, LPAR
             break;
 */
         case CLEAR_BUTTON:
-            logText.erase(logText.begin(), logText.end());
-            SetWindowTextA(hLog, "Cleared! :)\r\nFind Tutorials on Guidedhacking.com!");
+            SetWindowTextA(hLog, "");
         }
     }
     return DefWindowProc(hWindow, uMessage, wParam, lParam);
@@ -167,31 +205,27 @@ BOOL RegisterDLLWindowClass(const wchar_t szClassName[]) {
 }
 
 inline void printSendBufferToLog() {
-    char sendID[] = "[SEND] ";
+    
 #ifdef _DEBUG
     std::cout << "Sent Packet len: " << std::dec << sentLen << std::endl;
 #endif
-    while (logText.size() > 4096) {
-        logText.erase(logText.begin(), logText.begin() + 400);
+
+    if (FilterLog) {
+        //filter packets
     }
-    if (logText.size() > 1) {
-        logText.pop_back();
-        logText.push_back('\r');
-        logText.push_back('\n');
-    }
+
+    int index = GetWindowTextLength(hLog);
+    SendMessageA(hLog, EM_SETSEL, (WPARAM)index, (LPARAM)index); // set selection - end of text
+    std::string buffer = "[SEND]";
     
-    for (DWORD i = 0; i < sentLen + 7; ++i) {
-        if (i < 7) {
-            logText.push_back(sendID[i]);
-        }
-        else {
-            logText.push_back(hex_chars[((sentBuffer)[i - 7] & 0xF0) >> 4]);
-            logText.push_back(hex_chars[((sentBuffer)[i - 7] & 0x0F) >> 0]);
-            logText.push_back(' ');
-        }
+    for (DWORD i = 0; i < sentLen; ++i) {
+        buffer += (hex_chars[((sentBuffer)[i] & 0xF0) >> 4]);
+        buffer += (hex_chars[((sentBuffer)[i] & 0x0F) >> 0]);
+        buffer += ' ';
     }
-    logText.push_back('\0');
-    SetWindowTextA(hLog, &logText[0]);
+    buffer += "\r\n";
+    std::cout << buffer << std::endl;
+    SendMessageA(hLog, EM_REPLACESEL, 0, (LPARAM)buffer.c_str());
 }
 
 /*
@@ -234,8 +268,6 @@ DWORD WINAPI WindowThread(HMODULE hModule){
     std::cout << "DLL got injected!" << std::endl;
 #endif 
 
-    logText = std::vector<char>();
-
     moduleBase = (uintptr_t)GetModuleHandle(moduleName);
     Send = (InternalSend)(ScanInternal(internalSendPattern, internalSendMask, (char*)(moduleBase+ 0x0500000), 0x3000000));
     //void* toHookRecv = (void*)(moduleBase+0x10097D6);//(ScanInternal(internalRecvPattern, internalRecvMask, (char*)(moduleBase + 0x0500000), 0x3000000));
@@ -259,17 +291,22 @@ DWORD WINAPI WindowThread(HMODULE hModule){
     HMENU hMenu = CreateDLLWindowMenu();
     HWND hSendButton;
     HWND hClearButton;
-    
+    HFONT hLogFont = CreateFontA(14,0,0,0,0,FALSE,FALSE,FALSE,ANSI_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS,ANTIALIASED_QUALITY,FF_DONTCARE | DEFAULT_PITCH,"Lucida Console");
+
     RegisterDLLWindowClass(L"InjectedDLLWindowClass");
-    HWND hwnd = CreateWindowEx(0, L"InjectedDLLWindowClass", L"Erarnitox's Tera Proxy | GuidedHacking.com", WS_EX_LAYERED, CW_USEDEFAULT, CW_USEDEFAULT, 1020, 885, NULL, hMenu, inj_hModule, NULL);
-    hLog = CreateWindowEx(0, L"edit", L"Tera Proxy made by Erarnitox\r\n!!! visit GuidedHacking.com !!!", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | WS_BORDER | ES_READONLY, 5, 5, 1005, 700, hwnd, NULL, hModule, NULL);
+    HWND hwnd = CreateWindowEx(0, L"InjectedDLLWindowClass", L"Erarnitox's Tera Proxy | GuidedHacking.com", WS_EX_LAYERED /*| WS_EX_APPWINDOW*/, CW_USEDEFAULT, CW_USEDEFAULT, 1020, 885, NULL, hMenu, inj_hModule, NULL);
+    hLog = CreateWindowEx(0, L"edit", L"", WS_CHILD | WS_BORDER | WS_VISIBLE | WS_HSCROLL | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | ES_NOHIDESEL, 5, 5, 1005, 700, hwnd, NULL, hModule, NULL);
+    SendMessage(hLog,WM_SETFONT,(WPARAM)hLogFont,0);
 
     hClearButton = CreateWindowEx(0, L"button", L"Clear Log", WS_TABSTOP | WS_CHILD | WS_VISIBLE | WS_BORDER | BS_DEFPUSHBUTTON, 5, 710, 100, 30, hwnd, (HMENU)CLEAR_BUTTON, hModule, NULL);
     hSendButton = CreateWindowEx(0, L"button", L"Send", WS_TABSTOP | WS_CHILD | WS_VISIBLE | WS_BORDER | BS_DEFPUSHBUTTON, 5, 800, 100, 30, hwnd, (HMENU)SEND_BUTTON, hModule, NULL);
     hCraftedPacket = CreateWindowEx(0, L"edit", L"<Packet Data>", WS_TABSTOP | WS_VISIBLE | WS_CHILD | ES_MULTILINE | WS_BORDER, 110, 730, 900, 100, hwnd, NULL, hModule, NULL);
+    SendMessage(hCraftedPacket, WM_SETFONT, (WPARAM)hLogFont, 0);
 
     hLogSend = CreateWindowEx(0, L"button", L"Log Send", WS_CHILD | WS_VISIBLE | BS_CHECKBOX, 110, 705, 100, 25, hwnd, (HMENU)LOG_SEND, hModule, NULL);
     //hLogRecv = CreateWindowEx(0, L"button", L"Log Recv", WS_CHILD | WS_VISIBLE | BS_CHECKBOX, 210, 705, 100, 25, hwnd, (HMENU)LOG_RECV, hModule, NULL);
+
+    hFilterLog = CreateWindowEx(0, L"button", L"Filter Log", WS_CHILD | WS_VISIBLE | BS_CHECKBOX, 910, 705, 100, 25, hwnd, (HMENU)LOG_FILTER, hModule, NULL);
 
     ShowWindow(hwnd, SW_SHOWNORMAL);
     UpdateWindow(hwnd); // redraw window;

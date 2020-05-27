@@ -1,8 +1,7 @@
-﻿  pch.cpp
-  dllmain.cpp
+﻿  dllmain.cpp
   Code wird generiert.
-  103 of 106 functions (97.2%) were compiled, the rest were copied from previous compilation.
-    4 functions were new in current compilation
-    1 functions had inline decision re-evaluated but remain unchanged
+  15 of 101 functions (14.9%) were compiled, the rest were copied from previous compilation.
+    5 functions were new in current compilation
+    12 functions had inline decision re-evaluated but remain unchanged
   Codegenerierung ist abgeschlossen.
   PacketEditor.vcxproj -> C:\Users\Erarnitox\source\repos\PacketEditor\TeraProxy\Release\PacketEditor.dll
