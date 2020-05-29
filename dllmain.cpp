@@ -7,6 +7,8 @@
 #include "Scan.h"
 #include <vector>
 #include <string>
+#include <commdlg.h>
+#include <fstream>
 
 #define MYMENU_EXIT (WM_APP + 100)
 #define SEND_BUTTON (WM_APP + 101)
@@ -23,6 +25,8 @@
 
 #define INC_FNT (WM_APP + 111)
 #define DEC_FNT (WM_APP + 112)
+#define LOAD_FILTER (WM_APP + 113)
+#define EXPORT_LOG (WM_APP + 114)
 
 HMODULE inj_hModule;
 HWND hCraftedPacket;
@@ -32,9 +36,12 @@ BOOL LogSend = FALSE;
 BOOL LogRecv = FALSE;
 BOOL FilterLog = FALSE;
 
+bool filterLog = false;
+
 HWND hLogSend;
 HWND hLogRecv;
 HWND hFilterLog;
+HFONT hLogFont;
 
 wchar_t craftedBuffer[533];
 char bufferToSend[533];
@@ -42,7 +49,53 @@ char appedToLog[533];
 char const hex_chars[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
 uintptr_t moduleBase;
+size_t fntSize = 14;
 
+std::vector<std::string> filter;
+std::vector<std::string> sequence;
+
+void OpenFile(char* filename, bool save, bool filter = false) {
+    filename[0] = 0;
+    OPENFILENAMEA saveDialog = {};
+    saveDialog.lStructSize = sizeof(OPENFILENAMEA);
+    saveDialog.hwndOwner = 0;
+    saveDialog.hInstance = 0;
+
+    if (save) {
+        saveDialog.lpstrFilter = "Log Files\0*.log";
+        saveDialog.lpstrDefExt = ".log";
+        saveDialog.lpstrTitle = "Export Log File";
+        saveDialog.Flags = OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
+    }else if(!filter){
+        saveDialog.lpstrFilter = "Sequence Files\0*.seq";
+        saveDialog.lpstrDefExt = ".seq";
+        saveDialog.lpstrTitle = "Load Sequnce file to replay";
+        saveDialog.Flags = OFN_NOCHANGEDIR;
+    }else {
+        saveDialog.lpstrFilter = "Filter Files\0*.filter";
+        saveDialog.lpstrDefExt = ".filter";
+        saveDialog.lpstrTitle = "Load Filter File";
+        saveDialog.Flags = OFN_NOCHANGEDIR;
+    }
+
+    saveDialog.lpstrCustomFilter = 0;
+    saveDialog.nMaxCustFilter = 0;
+    saveDialog.nFilterIndex = 1;
+    saveDialog.lpstrFile = filename;
+    saveDialog.nMaxFile = 256;
+    saveDialog.lpstrFileTitle = 0;
+    saveDialog.nMaxFileTitle = 0;
+    saveDialog.lpstrInitialDir = 0;
+    saveDialog.nFileOffset = 0;
+    saveDialog.nFileExtension = 1;
+    saveDialog.lCustData = 0;
+    saveDialog.lpfnHook = 0;
+    saveDialog.lpTemplateName = 0;
+    saveDialog.pvReserved = 0;
+    saveDialog.dwReserved = 0;
+    saveDialog.FlagsEx = 0;
+    GetSaveFileNameA(&saveDialog);
+}
 HMENU CreateDLLWindowMenu(){
     HMENU hMenu;
     hMenu = CreateMenu();
@@ -58,7 +111,8 @@ HMENU CreateDLLWindowMenu(){
 
     AppendMenuW(hFileMenuPopup, MF_STRING, MYMENU_EXIT, TEXT("Exit"));
     AppendMenuW(hFileMenuPopup, MF_STRING, LOAD_SEQ, TEXT("Load Sequenz"));
-    AppendMenuW(hFileMenuPopup, MF_STRING, NULL, TEXT("Export Log as Sequenz"));
+    AppendMenuW(hFileMenuPopup, MF_STRING, LOAD_FILTER, TEXT("Load Filter"));
+    AppendMenuW(hFileMenuPopup, MF_STRING, EXPORT_LOG, TEXT("Export Log"));
 
     AppendMenuW(hToolMenuPopup, MF_STRING, CLEAR_BUTTON, TEXT("Clear"));
     AppendMenuW(hToolMenuPopup, MF_STRING, SEND_SEQ, TEXT("Send Sequenz"));
@@ -76,6 +130,7 @@ HMENU CreateDLLWindowMenu(){
 }
 
 LRESULT CALLBACK MessageHandler(HWND hWindow, UINT uMessage, WPARAM wParam, LPARAM lParam) {
+    char filterFile[512];
     switch (uMessage) {
     case WM_CLOSE:
     case WM_DESTROY:
@@ -87,6 +142,71 @@ LRESULT CALLBACK MessageHandler(HWND hWindow, UINT uMessage, WPARAM wParam, LPAR
         case MYMENU_EXIT:
             PostQuitMessage(0);
             return 0;
+            break;
+        case INC_FNT:
+            if (fntSize > 50) break;
+            hLogFont = CreateFontA(++fntSize, 0, 0, 0, 0, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, FF_DONTCARE | DEFAULT_PITCH, "Lucida Console");
+            SendMessage(hLog, WM_SETFONT, (WPARAM)hLogFont, 0);
+            UpdateWindow(hLog);
+            break;
+        case DEC_FNT:
+            if (fntSize < 2) break;
+            hLogFont = CreateFontA(--fntSize, 0, 0, 0, 0, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, FF_DONTCARE | DEFAULT_PITCH, "Lucida Console");
+            SendMessage(hLog, WM_SETFONT, (WPARAM)hLogFont, 0);
+            UpdateWindow(hLog);
+            break;
+        case EXPORT_LOG:
+            OpenFile(filterFile, true);
+            if (filterFile != nullptr) {
+                std::string line;
+                std::ofstream myfile(filterFile);
+                char* outLogBuffer = (char*)alloca(GetWindowTextLengthA(hLog));
+                sequence.clear();
+                if (myfile.is_open()) {
+                    GetWindowTextA(hLog, outLogBuffer, GetWindowTextLengthA(hLog));
+                    myfile << outLogBuffer;
+                    myfile.close();
+                }
+            }
+            break;
+        case LOAD_SEQ:
+            OpenFile(filterFile, false);
+            if (filterFile != nullptr) {
+                std::string line;
+                std::ifstream myfile(filterFile);
+                sequence.clear();
+                if (myfile.is_open()) {
+                    while (std::getline(myfile, line)) {
+                        sequence.push_back(line);
+                    }
+                    myfile.close();
+                }
+            }
+            break;
+        case LOAD_FILTER:
+            OpenFile(filterFile, false, true);
+            if (filterFile != nullptr) {
+                std::string line;
+                std::ifstream myfile(filterFile);
+                filter.clear();
+                if (myfile.is_open()){
+                    while (std::getline(myfile, line)){
+                        filter.push_back(line);
+                    }
+                    myfile.close();
+                }
+            }
+            break;
+        case LOG_FILTER:
+            FilterLog = IsDlgButtonChecked(hWindow, LOG_FILTER);
+
+            if (FilterLog == BST_CHECKED) {
+                CheckDlgButton(hWindow, LOG_FILTER, BST_UNCHECKED);
+                filterLog = false;
+            } else {
+                CheckDlgButton(hWindow, LOG_FILTER, BST_CHECKED);
+                filterLog = true;
+            }
             break;
         case SEND_BUTTON:
 #ifdef _DEBUG
@@ -186,6 +306,7 @@ LRESULT CALLBACK MessageHandler(HWND hWindow, UINT uMessage, WPARAM wParam, LPAR
 
 //Register our windows Class
 BOOL RegisterDLLWindowClass(const wchar_t szClassName[]) {
+    //HICON hIcon = static_cast<HICON>(::LoadImage(inj_hModule,MAKEINTRESOURCE(IDI_SHIELD),IMAGE_ICON,48, 48,LR_DEFAULTCOLOR));
     WNDCLASSEX wc;
     wc.hInstance = inj_hModule;
     wc.lpszClassName = (LPCWSTR)szClassName;
@@ -198,7 +319,7 @@ BOOL RegisterDLLWindowClass(const wchar_t szClassName[]) {
     wc.lpszMenuName = NULL;
     wc.cbClsExtra = 0;
     wc.cbWndExtra = 0;
-    wc.hbrBackground = GetSysColorBrush(COLOR_BTNFACE);
+    wc.hbrBackground = GetSysColorBrush(COLOR_BTNFACE); // CreateSolidBrush(RGB(128, 128, 128));
     if (!RegisterClassEx(&wc))
         return 0;
     return 1;
@@ -210,13 +331,10 @@ inline void printSendBufferToLog() {
     std::cout << "Sent Packet len: " << std::dec << sentLen << std::endl;
 #endif
 
-    if (FilterLog) {
-        //filter packets
-    }
-
     int index = GetWindowTextLength(hLog);
     SendMessageA(hLog, EM_SETSEL, (WPARAM)index, (LPARAM)index); // set selection - end of text
     std::string buffer = "[SEND]";
+    int bufLen = buffer.size();
     
     for (DWORD i = 0; i < sentLen; ++i) {
         buffer += (hex_chars[((sentBuffer)[i] & 0xF0) >> 4]);
@@ -225,6 +343,15 @@ inline void printSendBufferToLog() {
     }
     buffer += "\r\n";
     std::cout << buffer << std::endl;
+
+    if (filterLog) {
+        for (size_t i = 0; i < filter.size(); ++i) {
+            if (buffer.compare(bufLen, filter.at(i).size(), filter.at(i)) == 0) {
+                std::cout << "FILTERED!" << std::endl;
+                return;
+            }
+        }
+    }
     SendMessageA(hLog, EM_REPLACESEL, 0, (LPARAM)buffer.c_str());
 }
 
@@ -291,7 +418,7 @@ DWORD WINAPI WindowThread(HMODULE hModule){
     HMENU hMenu = CreateDLLWindowMenu();
     HWND hSendButton;
     HWND hClearButton;
-    HFONT hLogFont = CreateFontA(14,0,0,0,0,FALSE,FALSE,FALSE,ANSI_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS,ANTIALIASED_QUALITY,FF_DONTCARE | DEFAULT_PITCH,"Lucida Console");
+    hLogFont = CreateFontA(fntSize,0,0,0,0,FALSE,FALSE,FALSE,ANSI_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS,ANTIALIASED_QUALITY,FF_DONTCARE | DEFAULT_PITCH,"Lucida Console");
 
     RegisterDLLWindowClass(L"InjectedDLLWindowClass");
     HWND hwnd = CreateWindowEx(0, L"InjectedDLLWindowClass", L"Erarnitox's Tera Proxy | GuidedHacking.com", WS_EX_LAYERED /*| WS_EX_APPWINDOW*/, CW_USEDEFAULT, CW_USEDEFAULT, 1020, 885, NULL, hMenu, inj_hModule, NULL);
@@ -305,7 +432,6 @@ DWORD WINAPI WindowThread(HMODULE hModule){
 
     hLogSend = CreateWindowEx(0, L"button", L"Log Send", WS_CHILD | WS_VISIBLE | BS_CHECKBOX, 110, 705, 100, 25, hwnd, (HMENU)LOG_SEND, hModule, NULL);
     //hLogRecv = CreateWindowEx(0, L"button", L"Log Recv", WS_CHILD | WS_VISIBLE | BS_CHECKBOX, 210, 705, 100, 25, hwnd, (HMENU)LOG_RECV, hModule, NULL);
-
     hFilterLog = CreateWindowEx(0, L"button", L"Filter Log", WS_CHILD | WS_VISIBLE | BS_CHECKBOX, 910, 705, 100, 25, hwnd, (HMENU)LOG_FILTER, hModule, NULL);
 
     ShowWindow(hwnd, SW_SHOWNORMAL);
