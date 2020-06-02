@@ -46,9 +46,6 @@ HWND hLogRecv;
 HWND hFilterLog;
 HFONT hLogFont;
 
-wchar_t craftedBuffer[533];
-char bufferToSend[533];
-char appedToLog[533];
 char const hex_chars[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
 uintptr_t moduleBase;
@@ -56,6 +53,9 @@ size_t fntSize = 14;
 
 std::vector<std::string> filter;
 std::vector<std::string> sequence;
+
+std::thread sendsequenceLoopThread;
+bool sendSequenceLoopRunning = false;
 
 void OpenFile(char* filename, bool save, bool filter = false);
 HMENU CreateDLLWindowMenu();
@@ -65,6 +65,20 @@ BOOL RegisterDLLWindowClass(const wchar_t szClassName[]);
 DWORD WINAPI WindowThread(HMODULE hModule);
 void hotKeys();
 void exitLogger();
+void incFontSize();
+void decFontSize();
+void exportLog();
+void loadFilter();
+void loadSequence();
+void sendButton();
+void logSend();
+void filterTheLog();
+void gameSendCaller(char* data, size_t size);
+void sendSequence();
+void stopSequenceLoop();
+void startSequenceLoop();
+void sequenceLoop();
+
 
 void OpenFile(char* filename, bool save, bool filter) {
     filename[0] = 0;
@@ -180,6 +194,21 @@ void exportLog() {
     }
 }
 
+void startSequenceLoop() {
+    sendSequenceLoopRunning = true;
+    sendsequenceLoopThread = std::thread(sequenceLoop);
+}
+
+void stopSequenceLoop() {
+    sendSequenceLoopRunning = false;
+    sendsequenceLoopThread.join();
+}
+
+void sequenceLoop() {
+    while (sendSequenceLoopRunning) {
+        sendSequence();
+    }
+}
 void loadFilter() {
     char filterFile[512];
     OpenFile(filterFile, false, true);
@@ -212,6 +241,19 @@ void loadSequence() {
     }
 }
 
+void sendSequence() {
+    char* buffer;
+    size_t len;
+    for (std::string data : sequence) { 
+        len = data.size();
+        buffer = new char[len+1];
+        std::memcpy(buffer, data.c_str(), len);
+        buffer[len] = '\0';
+        gameSendCaller(buffer, ++len);
+        delete[] buffer;
+    }
+}
+
 void filterTheLog() {
     if (filter.size() < 1) {
         MessageBoxA(0, "Empty Filter!", "Filter File is empty or not correct", MB_OK);
@@ -229,48 +271,57 @@ void filterTheLog() {
 }
 
 void sendButton() {
-    GetWindowText(hCraftedPacket, craftedBuffer, 533);
-    size_t len;
-
+    size_t len = GetWindowTextLengthW(hCraftedPacket);
+    ++len;
+    wchar_t* craftedBuffer = new wchar_t[len];
+    char* bufferToSend = new char[len];
+    GetWindowTextW(hCraftedPacket, craftedBuffer, len);
+   
     //convert buffer to chars:
-    wcstombs_s(&len, bufferToSend, 533, craftedBuffer, 533);
+    wcstombs_s(&len, bufferToSend, len, craftedBuffer, len);
 
+    gameSendCaller(bufferToSend, len);
+    delete[] bufferToSend;
+    delete[] craftedBuffer;
+}
+
+void gameSendCaller(char* data, size_t size) {
     //convert buffer to Bytes:
     size_t i;
     i = 0;
-    for (size_t count = 0; count < len; ++i, count += 3) {
+    for (size_t count = 0; count < size; ++i, count += 3) {
 
-        if (bufferToSend[count] >= 'a') {
-            bufferToSend[count] -= 0x20;
+        if (data[count] >= 'a') {
+            data[count] -= 0x20;
         }
 
-        if (bufferToSend[count + 1] >= 'a') {
-            bufferToSend[count + 1] -= 0x20;
+        if (data[count + 1] >= 'a') {
+            data[count + 1] -= 0x20;
         }
 
-        if (bufferToSend[count] >= 'A') {
-            bufferToSend[count] -= 'A';
-            bufferToSend[count] += 10;
+        if (data[count] >= 'A') {
+            data[count] -= 'A';
+            data[count] += 10;
         }
         else {
-            bufferToSend[count] -= 48;
+            data[count] -= 48;
         }
 
-        if (bufferToSend[count + 1] >= 'A') {
-            bufferToSend[count + 1] -= 'A';
-            bufferToSend[count + 1] += 10;
+        if (data[count + 1] >= 'A') {
+            data[count + 1] -= 'A';
+            data[count + 1] += 10;
         }
         else {
-            bufferToSend[count + 1] -= 48;
+            data[count + 1] -= 48;
         }
 
-        bufferToSend[i] = (__int8)(((char)bufferToSend[count]) * (char)16);
-        bufferToSend[i] += (__int8)bufferToSend[count + 1];
+        data[i] = (__int8)(((char)data[count]) * (char)16);
+        data[i] += (__int8)data[count + 1];
     }
-    bufferToSend[i] = '\0';
+    data[i] = '\0';
 
     if (thisPTR != 0) {
-        Send(thisPTR, bufferToSend, i);
+        Send(thisPTR, data, i);
     }
 }
 
@@ -321,11 +372,20 @@ LRESULT CALLBACK MessageHandler(HWND hWindow, UINT uMessage, WPARAM wParam, LPAR
         case SEND_BUTTON:
             sendButton();
             break;
+        case SEND_SEQ:
+            sendSequence();
+            break;
         case CLEAR_BUTTON:
             SetWindowTextA(hLog, "");
             break;
         case LOG_SEND:
             logSend();
+            break;
+        case SEND_LOOP:
+            startSequenceLoop();
+            break;
+        case STOP_LOOP:
+            stopSequenceLoop();
             break;
         }
     }
@@ -468,6 +528,9 @@ DWORD WINAPI WindowThread(HMODULE hModule){
     }
 
     //exit:
+    if (sendSequenceLoopRunning) {
+        stopSequenceLoop();
+    }
     running = false;
     hotKeyThread.join();
     delete sendHook;
