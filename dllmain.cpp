@@ -1,15 +1,15 @@
-#include "pch.h"
 #include <windows.h>
 #include <iostream>
 #include <iomanip>
-#include "Tera.h"
-#include "Hook.h"
-#include "Scan.h"
 #include <vector>
 #include <string>
 #include <commdlg.h>
 #include <fstream>
 #include <thread>
+
+#include "Tera.h"
+#include "Hook.h"
+#include "Scan.h"
 
 #define MYMENU_EXIT (WM_APP + 100)
 #define SEND_BUTTON (WM_APP + 101)
