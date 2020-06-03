@@ -33,12 +33,12 @@ HMODULE inj_hModule;
 HWND hCraftedPacket;
 HWND hLog;
 
-BOOL LogSend = FALSE;
-BOOL LogRecv = FALSE;
-BOOL FilterLog = FALSE;
+BOOL LogSend{ FALSE };
+BOOL LogRecv{ FALSE };
+BOOL FilterLog{ FALSE };
 
-bool filterLog = false;
-bool running = true;
+bool filterLog{ false };
+bool running{ true };
 
 HWND hwnd;
 HWND hLogSend;
@@ -49,13 +49,13 @@ HFONT hLogFont;
 char const hex_chars[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
 uintptr_t moduleBase;
-size_t fntSize = 14;
+size_t fntSize{ 14 };
 
 std::vector<std::string> filter;
 std::vector<std::string> sequence;
 
 std::thread sendsequenceLoopThread;
-bool sendSequenceLoopRunning = false;
+bool sendSequenceLoopRunning{ false };
 
 void OpenFile(char* filename, bool save, bool filter = false);
 HMENU CreateDLLWindowMenu();
@@ -82,7 +82,7 @@ void sequenceLoop();
 
 void OpenFile(char* filename, bool save, bool filter) {
     filename[0] = 0;
-    OPENFILENAMEA saveDialog = {};
+    OPENFILENAMEA saveDialog{};
     saveDialog.lStructSize = sizeof(OPENFILENAMEA);
     saveDialog.hwndOwner = 0;
     saveDialog.hInstance = 0;
@@ -123,17 +123,13 @@ void OpenFile(char* filename, bool save, bool filter) {
     GetSaveFileNameA(&saveDialog);
 }
 HMENU CreateDLLWindowMenu(){
-    HMENU hMenu;
-    hMenu = CreateMenu();
-    HMENU hFileMenuPopup;
-    HMENU hToolMenuPopup;
-    HMENU hFontMenuPopup;
-
+    HMENU hMenu = CreateMenu();
+   
     if (hMenu == NULL)
         return FALSE;
-    hFileMenuPopup = CreatePopupMenu();
-    hToolMenuPopup = CreatePopupMenu();
-    hFontMenuPopup = CreatePopupMenu();
+    HMENU hFileMenuPopup = CreatePopupMenu();
+    HMENU hToolMenuPopup = CreatePopupMenu();
+    HMENU hFontMenuPopup = CreatePopupMenu();
 
     AppendMenuW(hFileMenuPopup, MF_STRING, MYMENU_EXIT, TEXT("Exit"));
     AppendMenuW(hFileMenuPopup, MF_STRING, LOAD_SEQ, TEXT("Load Sequenz"));
@@ -183,14 +179,14 @@ void exportLog() {
     if (filterFile != nullptr) {
         std::string line;
         std::ofstream myfile(filterFile);
-        char* outLogBuffer = new char[GetWindowTextLengthA(hLog)];
+        int len{ GetWindowTextLengthA(hLog) };
+        auto outLogBuffer = std::make_unique<char[]>(len);
         sequence.clear();
         if (myfile.is_open()) {
-            GetWindowTextA(hLog, outLogBuffer, GetWindowTextLengthA(hLog));
+            GetWindowTextA(hLog, outLogBuffer.get(), GetWindowTextLengthA(hLog));
             myfile << outLogBuffer;
             myfile.close();
         }
-        delete[] outLogBuffer;
     }
 }
 
@@ -242,15 +238,14 @@ void loadSequence() {
 }
 
 void sendSequence() {
-    char* buffer;
+    std::unique_ptr<char[]> buffer;
     size_t len;
     for (std::string data : sequence) { 
         len = data.size();
-        buffer = new char[len+1];
-        std::memcpy(buffer, data.c_str(), len);
+        buffer = std::make_unique<char[]>(len +1);
+        std::memcpy(buffer.get(), data.c_str(), len);
         buffer[len] = '\0';
-        gameSendCaller(buffer, ++len);
-        delete[] buffer;
+        gameSendCaller(buffer.get(), ++len);
     }
 }
 
@@ -273,16 +268,14 @@ void filterTheLog() {
 void sendButton() {
     size_t len = GetWindowTextLengthW(hCraftedPacket);
     ++len;
-    wchar_t* craftedBuffer = new wchar_t[len];
-    char* bufferToSend = new char[len];
-    GetWindowTextW(hCraftedPacket, craftedBuffer, len);
+    auto craftedBuffer = std::make_unique<wchar_t[]>(len);
+    auto bufferToSend = std::make_unique<char[]>(len);
+    GetWindowTextW(hCraftedPacket, craftedBuffer.get(), len);
    
     //convert buffer to chars:
-    wcstombs_s(&len, bufferToSend, len, craftedBuffer, len);
+    wcstombs_s(&len, bufferToSend.get(), len, craftedBuffer.get(), len);
 
-    gameSendCaller(bufferToSend, len);
-    delete[] bufferToSend;
-    delete[] craftedBuffer;
+    gameSendCaller(bufferToSend.get(), len);
 }
 
 void gameSendCaller(char* data, size_t size) {
@@ -336,8 +329,6 @@ void logSend() {
         CheckDlgButton(hwnd, LOG_SEND, BST_CHECKED);
         logSentHook = true;
     }
-    // UpdateWindow(hwnd);
-    // RedrawWindow(hLogSend, 0, 0, RDW_INVALIDATE | RDW_ERASE);
 }
 
 LRESULT CALLBACK MessageHandler(HWND hWindow, UINT uMessage, WPARAM wParam, LPARAM lParam) {
@@ -419,18 +410,18 @@ inline void printSendBufferToLog() {
     std::cout << "Sent Packet len: " << std::dec << sentLen << std::endl;
 #endif
 
-    int index = GetWindowTextLengthW(hLog);
-    int limit = (int)SendMessageA(hLog, EM_GETLIMITTEXT, 0, 0);
-    if (limit < index + (int)(sentLen * 3)) {
+    int index{ GetWindowTextLengthW(hLog) };
+    int limit{ static_cast<int>(SendMessageA(hLog, EM_GETLIMITTEXT, 0, 0)) };
+    if (limit < index + static_cast<int>((sentLen * 3))) {
         SendMessageA(hLog, EM_SETSEL, 0, 1024);
         SendMessageA(hLog, EM_REPLACESEL, 0, (LPARAM)"");
     }
 
-    SendMessageA(hLog, EM_SETSEL, (WPARAM)index, (LPARAM)index); // set selection - end of text
-    std::string buffer = "[SEND]";
-    int bufLen = buffer.size();
+    SendMessageA(hLog, EM_SETSEL, static_cast<WPARAM>(index), static_cast<LPARAM>(index)); // set selection - end of text
+    std::string buffer{"[SEND]"};
+    size_t bufLen{ buffer.size() };
     
-    for (DWORD i = 0; i < sentLen; ++i) {
+    for (DWORD i{ 0 }; i < sentLen; ++i) {
         buffer += (hex_chars[((sentBuffer)[i] & 0xF0) >> 4]);
         buffer += (hex_chars[((sentBuffer)[i] & 0x0F) >> 0]);
         buffer += ' ';
@@ -439,13 +430,13 @@ inline void printSendBufferToLog() {
     std::cout << buffer << std::endl;
 
     if (filterLog) {
-        for (size_t i = 0; i < filter.size(); ++i) {
+        for (size_t i{ 0 }; i < filter.size(); ++i) {
             if (buffer.compare(bufLen, filter.at(i).size(), filter.at(i)) == 0) {
                 return;
             }
         }
     }
-    SendMessageA(hLog, EM_REPLACESEL, 0, (LPARAM)buffer.c_str());
+    SendMessageA(hLog, EM_REPLACESEL, 0, reinterpret_cast<LPARAM>(buffer.c_str()));
 }
 
 void hotKeys() {
@@ -478,15 +469,15 @@ DWORD WINAPI WindowThread(HMODULE hModule){
     std::cout << "DLL got injected!" << std::endl;
 #endif 
 
-    moduleBase = (uintptr_t)GetModuleHandle(moduleName);
-    Send = (InternalSend)(ScanInternal(internalSendPattern, internalSendMask, (char*)(moduleBase+ 0x0500000), 0x3000000));
+    moduleBase = reinterpret_cast<uintptr_t>(GetModuleHandle(moduleName));
+    Send = reinterpret_cast<InternalSend>(ScanInternal(internalSendPattern, internalSendMask, reinterpret_cast<char*>(moduleBase+ 0x0500000), 0x3000000));
     //void* toHookRecv = (void*)(moduleBase+0x10097D6);//(ScanInternal(internalRecvPattern, internalRecvMask, (char*)(moduleBase + 0x0500000), 0x3000000));
 
 #ifdef _DEBUG
     std::cout << "send function location:" << std::hex << (int)Send << std::endl;
 #endif // _DEBUG
 
-    toHookSend += (size_t)Send;
+    toHookSend += reinterpret_cast<size_t>(Send);
     jmpBackAddrSend = toHookSend + sendHookLen;
     //jmpBackAddrRecv = (size_t)toHookRecv + recvHookLen;
 
@@ -494,46 +485,45 @@ DWORD WINAPI WindowThread(HMODULE hModule){
     std::cout << "[Send Jump Back Addy:] 0x" << std::hex << jmpBackAddrSend << std::endl;
 #endif
 
-    Hook* sendHook = new Hook((void*)toHookSend, (void*)sendHookFunc, sendHookLen);
-    //Hook* recvHook = new Hook(toHookRecv, recvHookFunc, recvHookLen);
+    {//begin Hook block
+        Hook sendHook{ reinterpret_cast<void*>(toHookSend), reinterpret_cast<void*>(sendHookFunc), sendHookLen };
+        //Hook* recvHook = new Hook(toHookRecv, recvHookFunc, recvHookLen);
 
-    MSG messages;
-    HMENU hMenu = CreateDLLWindowMenu();
-    HWND hSendButton;
-    HWND hClearButton;
-    hLogFont = CreateFontA(fntSize,0,0,0,0,FALSE,FALSE,FALSE,ANSI_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS,ANTIALIASED_QUALITY,FF_DONTCARE | DEFAULT_PITCH,"Lucida Console");
+        HMENU hMenu{ CreateDLLWindowMenu() };
+        hLogFont = CreateFontA(fntSize, 0, 0, 0, 0, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, FF_DONTCARE | DEFAULT_PITCH, "Lucida Console");
 
-    RegisterDLLWindowClass(L"InjectedDLLWindowClass");
-    hwnd = CreateWindowEx(0, L"InjectedDLLWindowClass", L"Erarnitox's Tera Proxy | GuidedHacking.com", WS_EX_LAYERED /*| WS_EX_APPWINDOW*/, CW_USEDEFAULT, CW_USEDEFAULT, 1020, 885, NULL, hMenu, inj_hModule, NULL);
-    hLog = CreateWindowEx(0, L"edit", L"", WS_CHILD | WS_BORDER | WS_VISIBLE | WS_HSCROLL | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | ES_NOHIDESEL, 5, 5, 1005, 700, hwnd, NULL, hModule, NULL);
-    SendMessage(hLog,WM_SETFONT,(WPARAM)hLogFont,0);
+        RegisterDLLWindowClass(L"InjectedDLLWindowClass");
+        hwnd = CreateWindowEx(0, L"InjectedDLLWindowClass", L"Erarnitox's Tera Proxy | GuidedHacking.com", WS_EX_LAYERED /*| WS_EX_APPWINDOW*/, CW_USEDEFAULT, CW_USEDEFAULT, 1020, 885, NULL, hMenu, inj_hModule, NULL);
+        hLog = CreateWindowEx(0, L"edit", L"", WS_CHILD | WS_BORDER | WS_VISIBLE | WS_HSCROLL | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | ES_NOHIDESEL, 5, 5, 1005, 700, hwnd, NULL, hModule, NULL);
+        SendMessage(hLog, WM_SETFONT, (WPARAM)hLogFont, 0);
 
-    hClearButton = CreateWindowEx(0, L"button", L"Clear Log (F9)", WS_TABSTOP | WS_CHILD | WS_VISIBLE | WS_BORDER | BS_DEFPUSHBUTTON, 5, 710, 100, 30, hwnd, (HMENU)CLEAR_BUTTON, hModule, NULL);
-    hSendButton = CreateWindowEx(0, L"button", L"Send (F8)", WS_TABSTOP | WS_CHILD | WS_VISIBLE | WS_BORDER | BS_DEFPUSHBUTTON, 5, 800, 100, 30, hwnd, (HMENU)SEND_BUTTON, hModule, NULL);
-    hCraftedPacket = CreateWindowEx(0, L"edit", L"<Packet Data>", WS_TABSTOP | WS_VISIBLE | WS_CHILD | ES_MULTILINE | WS_BORDER, 110, 730, 900, 100, hwnd, NULL, hModule, NULL);
-    SendMessage(hCraftedPacket, WM_SETFONT, (WPARAM)hLogFont, 0);
+        HWND hClearButton{ CreateWindowEx(0, L"button", L"Clear Log (F9)", WS_TABSTOP | WS_CHILD | WS_VISIBLE | WS_BORDER | BS_DEFPUSHBUTTON, 5, 710, 100, 30, hwnd, (HMENU)CLEAR_BUTTON, hModule, NULL) };
+        HWND hSendButton{ CreateWindowEx(0, L"button", L"Send (F8)", WS_TABSTOP | WS_CHILD | WS_VISIBLE | WS_BORDER | BS_DEFPUSHBUTTON, 5, 800, 100, 30, hwnd, (HMENU)SEND_BUTTON, hModule, NULL) };
+        hCraftedPacket = CreateWindowEx(0, L"edit", L"<Packet Data>", WS_TABSTOP | WS_VISIBLE | WS_CHILD | ES_MULTILINE | WS_BORDER, 110, 730, 900, 100, hwnd, NULL, hModule, NULL);
+        SendMessage(hCraftedPacket, WM_SETFONT, (WPARAM)hLogFont, 0);
 
-    hLogSend = CreateWindowEx(0, L"button", L"Log Send (F5)", WS_CHILD | WS_VISIBLE | BS_CHECKBOX, 110, 705, 120, 25, hwnd, (HMENU)LOG_SEND, hModule, NULL);
-    hLogRecv = CreateWindowEx(0, L"button", L"Log Recv (F6)", WS_CHILD | WS_VISIBLE | BS_CHECKBOX | WS_DISABLED, 250, 705, 120, 25, hwnd, NULL, hModule, NULL);
-    hFilterLog = CreateWindowEx(0, L"button", L"Filter Log (F1)", WS_CHILD | WS_VISIBLE | BS_CHECKBOX, 850, 705, 120, 25, hwnd, (HMENU)LOG_FILTER, hModule, NULL);
+        hLogSend = CreateWindowEx(0, L"button", L"Log Send (F5)", WS_CHILD | WS_VISIBLE | BS_CHECKBOX, 110, 705, 120, 25, hwnd, (HMENU)LOG_SEND, hModule, NULL);
+        hLogRecv = CreateWindowEx(0, L"button", L"Log Recv (F6)", WS_CHILD | WS_VISIBLE | BS_CHECKBOX | WS_DISABLED, 250, 705, 120, 25, hwnd, NULL, hModule, NULL);
+        hFilterLog = CreateWindowEx(0, L"button", L"Filter Log (F1)", WS_CHILD | WS_VISIBLE | BS_CHECKBOX, 850, 705, 120, 25, hwnd, (HMENU)LOG_FILTER, hModule, NULL);
 
-    ShowWindow(hwnd, SW_SHOWNORMAL);
-    //UpdateWindow(hwnd); // redraw window;
+        ShowWindow(hwnd, SW_SHOWNORMAL);
+        //UpdateWindow(hwnd); // redraw window;
 
-    std::thread hotKeyThread = std::thread(hotKeys);
+        std::thread hotKeyThread{ hotKeys };
 
-    while (running && GetMessage(&messages, NULL, 0, 0)){
-        TranslateMessage(&messages);
-        DispatchMessage(&messages);
-    }
+        MSG messages;
+        while (running && GetMessage(&messages, NULL, 0, 0)) {
+            TranslateMessage(&messages);
+            DispatchMessage(&messages);
+        }
 
-    //exit:
-    if (sendSequenceLoopRunning) {
-        stopSequenceLoop();
-    }
-    running = false;
-    hotKeyThread.join();
-    delete sendHook;
+        //exit:
+        if (sendSequenceLoopRunning) {
+            stopSequenceLoop();
+        }
+        running = false;
+        hotKeyThread.join();
+    }//end Hook block
     
 
 #ifdef _DEBUG
