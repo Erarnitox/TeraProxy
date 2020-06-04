@@ -21,7 +21,10 @@
     <ClInclude Include="Scan.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
-    <ClInclude Include="Tera.h">
+    <ClInclude Include="Game.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="dllmain.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>
