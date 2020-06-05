@@ -1,7 +1,7 @@
 #pragma once
 
-#define USE_SEND_HOOK 0
-#define USE_RECV_HOOK 1
+#define USE_SEND_HOOK 1
+#define USE_RECV_HOOK 0
 #define USE_SEND_BUTTON 1
 
 namespace game {
