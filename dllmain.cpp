@@ -19,6 +19,8 @@ HWND hwnd;
 HWND hLogSend;
 HWND hLogRecv;
 HWND hFilterLog;
+HWND hClearButton;
+HWND hSendButton;
 HFONT hLogFont;
 
 char const hex_chars[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
@@ -301,11 +303,27 @@ void logRecv() {
 #endif
 }
 
+inline void resize(LPARAM lParam) {
+    WORD nWidth = (LOWORD(lParam))>300? LOWORD(lParam) : 300;
+    WORD nHeight = (HIWORD(lParam)) > 400 ? HIWORD(lParam) : 400;
+    MoveWindow(hLog, 10, 10, (nWidth - 20), (nHeight - 145), false);
+
+    MoveWindow(hClearButton, 5, nHeight-130, 100, 30, false);
+    MoveWindow(hSendButton, 5, nHeight-45, 100, 30, false);
+    MoveWindow(hCraftedPacket, 110, nHeight-110, (nWidth - 120), 100, false);
+    MoveWindow(hLogSend, 110, nHeight-135, 120, 25, false);
+    MoveWindow(hLogRecv, 250, nHeight - 135, 120, 25, false);
+    MoveWindow(hFilterLog, nWidth-170, nHeight - 135, 120, 25, false);
+}
+
 LRESULT CALLBACK MessageHandler(HWND hWindow, UINT uMessage, WPARAM wParam, LPARAM lParam) {
     switch (uMessage) {
     case WM_CLOSE:
     case WM_DESTROY:
         exitLogger();
+        break;
+    case WM_SIZE:
+        resize(lParam);
         break;
     case WM_COMMAND:
         switch (LOWORD(wParam)) {
@@ -510,13 +528,13 @@ DWORD WINAPI WindowThread(HMODULE hModule){
         hLogFont = CreateFontA(fntSize, 0, 0, 0, 0, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, FF_DONTCARE | DEFAULT_PITCH, "Lucida Console");
 
         RegisterDLLWindowClass(L"InjectedDLLWindowClass");
-        hwnd = CreateWindowEx(0, L"InjectedDLLWindowClass", game::title, WS_EX_LAYERED /*| WS_EX_APPWINDOW*/, CW_USEDEFAULT, CW_USEDEFAULT, 820, 885, NULL, hMenu, inj_hModule, NULL);
+        hwnd = CreateWindowEx(0, L"InjectedDLLWindowClass", game::title, WS_EX_LAYERED | WS_EX_APPWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 820, 885, NULL, hMenu, inj_hModule, NULL);
         hLog = CreateWindowEx(0, L"edit", L"", WS_CHILD | WS_BORDER | WS_VISIBLE | WS_HSCROLL | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | ES_NOHIDESEL, 5, 5, 805, 700, hwnd, NULL, hModule, NULL);
         SendMessage(hLog, WM_SETFONT, (WPARAM)hLogFont, 0);
 
-        HWND hClearButton{ CreateWindowEx(0, L"button", L"Clear Log (F9)", WS_TABSTOP | WS_CHILD | WS_VISIBLE | WS_BORDER | BS_DEFPUSHBUTTON, 5, 710, 100, 30, hwnd, (HMENU)CLEAR_BUTTON, hModule, NULL) };
+        hClearButton = CreateWindowEx(0, L"button", L"Clear Log (F9)", WS_TABSTOP | WS_CHILD | WS_VISIBLE | WS_BORDER | BS_DEFPUSHBUTTON, 5, 710, 100, 30, hwnd, (HMENU)CLEAR_BUTTON, hModule, NULL);
 #if USE_SEND_BUTTON > 0
-        HWND hSendButton{ CreateWindowEx(0, L"button", L"Send (F8)", WS_TABSTOP | WS_CHILD | WS_VISIBLE | WS_BORDER | BS_DEFPUSHBUTTON, 5, 800, 100, 30, hwnd, (HMENU)SEND_BUTTON, hModule, NULL) };
+        hSendButton = CreateWindowEx(0, L"button", L"Send (F8)", WS_TABSTOP | WS_CHILD | WS_VISIBLE | WS_BORDER | BS_DEFPUSHBUTTON, 5, 800, 100, 30, hwnd, (HMENU)SEND_BUTTON, hModule, NULL);
 #else
         HWND hSendButton{ CreateWindowEx(0, L"button", L"Send (F8)", WS_TABSTOP | WS_CHILD | WS_VISIBLE | WS_DISABLED | WS_BORDER | BS_DEFPUSHBUTTON, 5, 800, 100, 30, hwnd, (HMENU)NULL, hModule, NULL) };
 #endif
