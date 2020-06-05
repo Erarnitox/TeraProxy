@@ -13,9 +13,9 @@
 #define MYMENU_EXIT (WM_APP + 100)
 #define SEND_BUTTON (WM_APP + 101)
 #define LOG_SEND (WM_APP + 102)
-#define LOG_FILTER (WM_APP + 105)
-//#define LOG_RECV (WM_APP + 103)
+#define LOG_RECV (WM_APP + 103)
 #define CLEAR_BUTTON (WM_APP + 104)
+#define LOG_FILTER (WM_APP + 105)
 
 #define SEND_SEQ (WM_APP + 106)
 #define SEND_LOOP (WM_APP + 107)
@@ -53,3 +53,36 @@ void stopSequenceLoop();
 void startSequenceLoop();
 void sequenceLoop();
 void printSendBufferToLog();
+void printRecvBufferToLog();
+
+namespace game {
+	bool logSentHook{ false };
+	bool logRecvHook{ false };
+	void* thisPTR;
+	DWORD sentLen;
+	char* sentBuffer;
+	DWORD recvLen;
+	char* recvBuffer;
+	char* tmpBuffer;
+	DWORD jmpBackAddrSend;
+	DWORD jmpBackAddrRecv;
+
+	//additional "resgisters" to use for tmp values:
+	void* teax;
+	void* tebx;
+	void* tecx;
+	void* tedx;
+	void* tesi;
+	void* tedi;
+	void* tebp;
+	void* tesp;
+
+	void* reax;
+	void* rebx;
+	void* recx;
+	void* redx;
+	void* resi;
+	void* redi;
+	void* rebp;
+	void* resp;
+}
