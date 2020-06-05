@@ -413,7 +413,7 @@ inline void printSendBufferToLog() {
 inline void printRecvBufferToLog() {
 
 #ifdef _DEBUG
-    std::cout << "Sent Packet len: " << std::dec << game::sentLen << std::endl;
+    std::cout << "Sent Packet len: " << std::dec << game::recvLen << std::endl;
 #endif
 
     int index{ GetWindowTextLengthW(hLog) };
@@ -427,7 +427,7 @@ inline void printRecvBufferToLog() {
     std::string buffer{ "[Recv]" };
     size_t bufLen{ buffer.size() };
 
-    for (DWORD i{ 0 }; i < game::sentLen; ++i) {
+    for (DWORD i{ 0 }; i < game::recvLen; ++i) {
         buffer += (hex_chars[((game::recvBuffer)[i] & 0xF0) >> 4]);
         buffer += (hex_chars[((game::recvBuffer)[i] & 0x0F) >> 0]);
         buffer += ' ';
@@ -482,7 +482,7 @@ DWORD WINAPI WindowThread(HMODULE hModule){
     game::Send = reinterpret_cast<game::InternalSend>(Pattern::ScanInternal(game::internalSendPattern, game::internalSendMask, reinterpret_cast<char*>(moduleBase), 0xF000000));
 #endif
 #if USE_RECV_HOOK > 0
-    void* toHookRecv = (Pattern::ScanInternal(game::internalRecvPattern, game::internalRecvMask, reinterpret_cast<char*>(moduleBase), 0xF000000));
+    game::toHookRecv += reinterpret_cast<size_t>(Pattern::ScanInternal(game::internalRecvPattern, game::internalRecvMask, reinterpret_cast<char*>(moduleBase), 0xF000000));
 #endif
 
 #ifdef _DEBUG
@@ -494,7 +494,7 @@ DWORD WINAPI WindowThread(HMODULE hModule){
     game::jmpBackAddrSend = game::toHookSend + game::sendHookLen;
 #endif
 #if USE_RECV_HOOK > 0
-    jmpBackAddrRecv = (size_t)toHookRecv + recvHookLen;
+    game::jmpBackAddrRecv = game::toHookRecv + game::recvHookLen;
 #endif
 
     {//begin Hook block

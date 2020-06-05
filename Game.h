@@ -1,7 +1,7 @@
 #pragma once
 
-#define USE_SEND_HOOK 1
-#define USE_RECV_HOOK 0
+#define USE_SEND_HOOK 0
+#define USE_RECV_HOOK 1
 #define USE_SEND_BUTTON 1
 
 namespace game {
@@ -16,15 +16,15 @@ namespace game {
 
     //Recv Hook Info:
     size_t toHookRecv{ 1 }; //offset from the pattern scan position
-    int recvHookLen{ 6 };
+    int recvHookLen{ 5 };
     
     //Send Hook pattern:
     const char* internalSendPattern{ "\x55\x8B\xEC\x53\x8B\xD9\x83\x7B\x0C\x00\x74\x54\x8B\x8B\x1C\x00\x02\x00\x85\xC9\x74\x2E\x8B\x01\x8B\x01\x8B\x40\x18\xFF\xD0" };
     const char* internalSendMask{ "xxxxxxxxxx??xx????xxxxxxx" };
 
     //Recv Hook pattern:
-    const char* internalRecvPattern = "\x8B\xCE\x52\xFF\75\xFC\xFF\x50\x10\x85\xDB\x75\x8D\x75\x8D\x5F\x5E\x5B\x8B\xE5";
-    const char* internalRecvMask = "xxxxxxxxxxxx???xxxxx";
+    const char* internalRecvPattern{ "\x55\x8B\xEC\x53\x8B\xD9\x83\x7B\x0C\x00\x74\x54\x8B\x8B\x1C\x00\x02\x00\x85\xC9\x74\x2E\x8B\x01\x8B\x01\x8B\x40\x18\xFF\xD0" };
+    const char* internalRecvMask{ "xxxxxxxxxx??xx????xxxxxxx" };
 
     /*
     This is the code that will be placed at the hooked send position. 
@@ -86,9 +86,10 @@ namespace game {
             mov redi, edi
             mov rebp, ebp
             mov resp, esp; end backup
-            mov eax, [esp + 0xC]
+            mov eax, [esp + 0x8]
             mov recvBuffer, eax
-            mov sentLen, edx
+            mov eax, [esp + 0xC]
+            mov recvLen, eax
         }
         if (logRecvHook) {
             //This call will print the contents of recvBuffer to the Log window:
@@ -106,9 +107,9 @@ namespace game {
             mov edi, redi
             mov ebp, rebp
             mov esp, resp; end restore
-            mov ecx, esi
-            push edx
-            push[ebp - 04]
+            mov ebp, esp
+            push ebx
+            mov ebx, ecx
             jmp[jmpBackAddrRecv]
         }
     }
