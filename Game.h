@@ -3,6 +3,7 @@
 #define USE_SEND_HOOK 1
 #define USE_RECV_HOOK 0
 #define USE_SEND_BUTTON 1
+#define USE_CUSTOM_ICON 1
 
 namespace game {
     typedef void(__thiscall* InternalSend)(void* thisClass, const char* data, DWORD length); //Send function signature

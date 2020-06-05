@@ -150,6 +150,7 @@
     <ClInclude Include="dllmain.h" />
     <ClInclude Include="Hook.h" />
     <ClInclude Include="Game.h" />
+    <ClInclude Include="resource.h" />
     <ClInclude Include="Scan.h" />
   </ItemGroup>
   <ItemGroup>
@@ -157,6 +158,9 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="icon1.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="PacketEditor.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -8,6 +8,7 @@
 #include <commdlg.h>
 #include <fstream>
 #include <thread>
+#include "resource.h"
 
 //Defines:
 #define MYMENU_EXIT (WM_APP + 100)

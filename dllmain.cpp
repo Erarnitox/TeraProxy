@@ -364,13 +364,14 @@ BOOL RegisterDLLWindowClass(const wchar_t szClassName[]) {
     wc.lpfnWndProc = MessageHandler;
     wc.style = CS_VREDRAW | CS_HREDRAW;
     wc.cbSize = sizeof(WNDCLASSEX);
-    wc.hIcon = LoadIcon(NULL, IDI_SHIELD);
-    wc.hIconSm = LoadIcon(NULL, IDI_SHIELD);
+    wc.hIcon = LoadIconW(NULL, IDI_SHIELD);
+    wc.hIconSm = LoadIconW(NULL, IDI_SHIELD);
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     wc.lpszMenuName = NULL;
     wc.cbClsExtra = 0;
     wc.cbWndExtra = 0;
     wc.hbrBackground = GetSysColorBrush(COLOR_BTNFACE);
+
     if (!RegisterClassEx(&wc))
         return 0;
     return 1;
@@ -533,6 +534,12 @@ DWORD WINAPI WindowThread(HMODULE hModule){
         hLogRecv = CreateWindowEx(0, L"button", L"Log Recv (F6)", WS_CHILD | WS_VISIBLE | BS_CHECKBOX | WS_DISABLED, 250, 705, 120, 25, hwnd, NULL, hModule, NULL);
 #endif
         hFilterLog = CreateWindowEx(0, L"button", L"Filter Log (F1)", WS_CHILD | WS_VISIBLE | BS_CHECKBOX, 650, 705, 120, 25, hwnd, (HMENU)LOG_FILTER, hModule, NULL);
+
+#if USE_CUSTOM_ICON > 0
+        //Set custom icon:
+        HICON hicon = (HICON)LoadImageW(inj_hModule,MAKEINTRESOURCEW(IDI_ICON1),IMAGE_ICON,GetSystemMetrics(SM_CXSMICON),GetSystemMetrics(SM_CYSMICON),0);
+        SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hicon);
+#endif
 
         ShowWindow(hwnd, SW_SHOWNORMAL);
         std::thread hotKeyThread{ hotKeys };
