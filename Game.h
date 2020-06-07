@@ -4,6 +4,9 @@
 #define USE_RECV_HOOK 1
 #define USE_SEND_BUTTON 1
 #define USE_CUSTOM_ICON 1
+#define USE_SEND_PATTERN 1
+#define USE_RECV_PATTERN 0
+
 
 namespace game {
     typedef void(__thiscall* InternalSend)(void* thisClass, const char* data, DWORD length); //Send function signature
@@ -16,7 +19,7 @@ namespace game {
     int sendHookLen{ 5 };
 
     //Recv Hook Info:
-    size_t toHookRecv{ 0x1407265 }; //offset from the pattern scan position
+    size_t toHookRecv{ 0x1407265 }; //offset from the pattern scan position 7
     int recvHookLen{ 5 };
     
     //Send Hook pattern:
@@ -24,8 +27,8 @@ namespace game {
     const char* internalSendMask{ "xxxxxxxxxx??xx????xxxxxxx" };
 
     //Recv Hook pattern:
-    const char* internalRecvPattern{ "\xFF\x50\x10\x85\xDB\x75\x8D\x5F\x5E\x5B\x8B\xE5\xC3" };
-    const char* internalRecvMask{ "xxxxxxxxxxxxx" };
+    const char* internalRecvPattern{ "\xCC\xCC\xE8\x6B\x07\x00\x00\xC2\x08\x00\xCC\xCC" };
+    const char* internalRecvMask{ "xxx????x??xx" };
 
     /*
     This is the code that will be placed at the hooked send position. 
