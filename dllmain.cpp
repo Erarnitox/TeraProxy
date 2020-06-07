@@ -501,7 +501,7 @@ DWORD WINAPI WindowThread(HMODULE hModule){
     game::Send = reinterpret_cast<game::InternalSend>(Pattern::ScanInternal(game::internalSendPattern, game::internalSendMask, reinterpret_cast<char*>(moduleBase), 0xF000000));
 #endif
 #if USE_RECV_HOOK > 0
-    game::toHookRecv += reinterpret_cast<size_t>(Pattern::ScanInternal(game::internalRecvPattern, game::internalRecvMask, reinterpret_cast<char*>(moduleBase), 0xF000000));
+    //game::toHookRecv += reinterpret_cast<size_t>(Pattern::ScanInternal(game::internalRecvPattern, game::internalRecvMask, reinterpret_cast<char*>(moduleBase), 0xF000000));
 #endif
 
 #ifdef _DEBUG
