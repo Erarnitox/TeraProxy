@@ -201,6 +201,7 @@ void sendSequence() {
         std::memcpy(buffer.get(), data.c_str(), len);
         buffer[len] = '\0';
         gameSendCaller(buffer.get(), ++len);
+        Sleep(50);
     }
 }
 
@@ -470,6 +471,9 @@ void hotKeys() {
         }
         if (GetAsyncKeyState(VK_F5) & 1) {
             logSend();
+        }
+        if (GetAsyncKeyState(VK_F8) & 1) {
+            sendButton();
         }
         if (GetAsyncKeyState(VK_F6) & 1) {
             logRecv();
