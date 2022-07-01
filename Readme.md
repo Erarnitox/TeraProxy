@@ -6,6 +6,8 @@
 What you will end up with after following this guide:
 [![TeraPacketEditor](./.res/final.png)](https://youtu.be/5ELH6Jq2vUI)
 
+You can find the source code to all of this [here](./src/)
+
 
 Hello and welcome to my first real guide or tutorial on this Forum.
 
@@ -28,7 +30,7 @@ After that we try to understand the protocol and identify possible vulns.
 For this guide i have taken the game Tera as an example but everything in this guide
 does also apply to any other MMO.
 
-![Tera Logo](./res/tera.jpg)
+![Tera Logo](./.res/tera.jpg)
 
 If you don't understand everything quite yet:
 Don't worry this is a step by step guide.
@@ -101,7 +103,9 @@ In my case send():
 (https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-send)
 as we can see the 2nd parameter is a char* to our (encrypted) buffer and the 3rd is the length of our buffer.
 These are the most important for us.
-![callstack](callstack.jpg)
+
+![callstack](./.res/callstack.jpg)
+
 As you can see with our breakpoint hit we can inspect the current stack.
 The first address on the stack (the one pushed onto the stack) will always be the return address (where the function got called from). After that we can see the srguments the function expects pushed onto the stack.
 I have marked the ones that are important for us.
